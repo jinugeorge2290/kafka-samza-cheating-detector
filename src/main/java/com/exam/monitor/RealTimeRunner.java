@@ -1,93 +1,89 @@
 package com.exam.monitor;
 
-import org.apache.samza.config.MapConfig;
-import org.apache.samza.runtime.LocalApplicationRunner;
-import org.apache.samza.task.StreamTaskFactory;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.Duration;
+import java.util.*;
 
 public class RealTimeRunner {
+
+    private static final Map<String, Integer> violationCounts = new HashMap<>();
+
     public static void main(String[] args) {
+        System.out.println("===== EXAM CHEATING DETECTION SYSTEM STARTED =====");
+
+        // -----------------------------
+        // KAFKA CONSUMER CONFIG
+        // -----------------------------
+        Properties consumerProps = new Properties();
+        consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, "cheating-detector-group");
+        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
+        consumer.subscribe(Collections.singletonList("exam-events"));
+
+        // -----------------------------
+        // KAFKA PRODUCER CONFIG
+        // -----------------------------
+        Properties producerProps = new Properties();
+        producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+
+        KafkaProducer<String, String> producer = new KafkaProducer<>(producerProps);
+
+        System.out.println("Listening to topic: exam-events");
+        System.out.println("Publishing alerts to topic: exam-alerts");
+
         try {
-            Map<String, String> config = new HashMap<>();
-
-            // -------------------
-            // BASIC JOB CONFIG
-            // -------------------
-            config.put("job.name", "cheating-detector");
-            config.put("job.id", "1");
-
-            // -------------------
-            // LOCAL RUNNER
-            // -------------------
-            config.put("app.runner.class", "org.apache.samza.runtime.LocalApplicationRunner");
-            config.put("job.factory.class", "org.apache.samza.job.local.ThreadJobFactory");
-            config.put("job.coordinator.factory", "org.apache.samza.standalone.PassthroughJobCoordinatorFactory");
-            config.put("job.coordination.utils.factory", "org.apache.samza.standalone.PassthroughCoordinationUtilsFactory");
-            config.put("task.name.grouper.factory", "org.apache.samza.container.grouper.task.SingleContainerGrouperFactory");
-            config.put("processor.id", "0");
-
-            // -------------------
-            // TASK CONFIG
-            // -------------------
-            config.put("task.class", "com.exam.monitor.CheatingDetectionTask");
-            config.put("task.inputs", "kafka.exam-events");
-
-            // -------------------
-            // KAFKA CONFIG
-            // -------------------
-            config.put("systems.kafka.samza.factory", "org.apache.samza.system.kafka.KafkaSystemFactory");
-            config.put("systems.kafka.consumer.zookeeper.connect", "localhost:2181");
-            config.put("systems.kafka.consumer.bootstrap.servers", "localhost:29092");
-            config.put("systems.kafka.producer.bootstrap.servers", "localhost:29092");
-            config.put("job.default.system", "kafka");
-
-            // Read from beginning
-            config.put("systems.kafka.default.stream.samza.offset.default", "oldest");
-            config.put("systems.kafka.consumer.auto.offset.reset", "earliest");
-
-            // -------------------
-            // SERDE
-            // -------------------
-            config.put("serializers.registry.string.class", "org.apache.samza.serializers.StringSerdeFactory");
-            config.put("systems.kafka.samza.key.serde", "string");
-            config.put("systems.kafka.samza.msg.serde", "string");
-
-            // -------------------
-            // STREAMS
-            // -------------------
-            config.put("streams.exam-events.samza.system", "kafka");
-            config.put("streams.exam-events.samza.physical.name", "exam-events");
-            config.put("streams.exam-events.samza.key.serde", "string");
-            config.put("streams.exam-events.samza.msg.serde", "string");
-
-            config.put("streams.exam-alerts.samza.system", "kafka");
-            config.put("streams.exam-alerts.samza.physical.name", "exam-alerts");
-            config.put("streams.exam-alerts.samza.key.serde", "string");
-            config.put("streams.exam-alerts.samza.msg.serde", "string");
-
-            System.out.println("--- STARTING SAMZA TASK JOB ---");
-
-            LocalApplicationRunner runner = new LocalApplicationRunner(new StreamTaskFactory() {
-                @Override
-                public org.apache.samza.task.StreamTask createInstance() {
-                    return new CheatingDetectionTask();
-                }
-            }, new MapConfig(config));
-
-            runner.run();
-
-            System.out.println("--- SAMZA TASK JOB IS NOW RUNNING ---");
-            System.out.println("Listening to exam-events and writing to exam-alerts...");
-
             while (true) {
-                Thread.sleep(5000);
-            }
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
 
+                records.forEach(record -> {
+                    String event = record.value();
+                    System.out.println("DEBUG: Received event -> " + event);
+
+                    String[] parts = event.split(":");
+                    if (parts.length < 2) {
+                        System.out.println("DEBUG: Invalid event format -> " + event);
+                        return;
+                    }
+
+                    String studentId = parts[0].trim();
+                    String eventType = parts[1].trim();
+
+                    int count = violationCounts.getOrDefault(studentId, 0) + 1;
+                    violationCounts.put(studentId, count);
+
+                    System.out.println("DEBUG: Student " + studentId +
+                            " event = " + eventType + ", count = " + count);
+
+                    if (count >= 3) {
+                        String alert = "ALERT: Potential Cheating by " + studentId;
+                        System.out.println("DEBUG: Sending alert -> " + alert);
+
+                        producer.send(new ProducerRecord<>("exam-alerts", alert));
+
+                        // Reset after alert
+                        violationCounts.put(studentId, 0);
+                    }
+                });
+            }
         } catch (Exception e) {
-            System.err.println("Fatal error starting Samza job:");
             e.printStackTrace();
+        } finally {
+            consumer.close();
+            producer.close();
         }
     }
 }
