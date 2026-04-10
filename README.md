@@ -6,7 +6,6 @@ Run these one by one in Terminal:
 java -version
 mvn -version
 docker --version
-docker compose version
 kubectl version --client
 ```
 
@@ -140,7 +139,7 @@ mvn clean compile
 
 If successful, Maven should finish without errors.
 
-# **STEP 8 — Start the Kafka output consumer first - Terminal 1**
+# **STEP 7 — Start the Kafka output consumer first - Terminal 1**
 
 Before running Samza, open a **new Terminal tab** and listen for alerts.
 
@@ -158,7 +157,7 @@ If you wish to see all previous alerts as well use below command —from-beginni
 docker exec -it kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic exam-alerts --from-beginning
 ```
 
-# **STEP 9 — Start the Samza job - Terminal 2 **
+# **STEP 8 — Start the Samza job - Terminal 2**
 
 Go back to your main terminal (project folder) and run:
 
@@ -197,7 +196,7 @@ Listening to topic: exam-events
 Publishing alerts to topic: exam-alerts
 ```
 
-# **STEP 10 — Send test events into Kafka - Terminal 3**
+# **STEP 9 — Send test events into Kafka - Terminal 3**
 
 Open **another terminal tab** and enter Kafka container:
 
